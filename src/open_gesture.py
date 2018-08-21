@@ -14,6 +14,9 @@ class gframe:
     def get(self):
         return self.frame
 
+    def flip(self, dir=1):
+        self.frame = cv2.flip(self.frame, dir)
+    
     def gray(self):
         self.frame = cv2.cvtColor(self.frame, cv2.COLOR_BGR2GRAY)
 
@@ -23,13 +26,11 @@ class gframe:
     def threshold(self):
         self.frame = cv2.threshold(self.frame, self.binary_threshold, 255, cv2.THRESH_BINARY)[1]
 
-    def flip(self, dir=1):
-        self.frame = cv2.flip(self.frame, dir)
-
-    def show(self, title='frame', wait=1):
-        cv2.namedWindow(title)
-        cv2.imshow(title, self.frame)
-        return cv2.waitKey(wait)
+    '''Returns list of contours, sorted by area (largest to smallest)'''
+    def get_contours(self):
+        cpy = copy.deepcopy(self.frame)
+        _,contours,hierarchy = cv2.findContours(cpy, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        return sorted(contours, key=lambda c: cv2.contourArea(c), reverse=True)
 
     def remove_bg(self, bg_model):
         fgmask = bg_model.apply(self.frame,learningRate=self.learning_rate)
@@ -40,6 +41,11 @@ class gframe:
     def crop(self, x_begin, x_end, y_begin, y_end):
         self.frame = self.frame[int(y_begin * self.frame.shape[0]):int(y_end * self.frame.shape[0]), 
                          int(x_begin * self.frame.shape[1]):int(x_end * self.frame.shape[1])]
+    
+    def show(self, title='frame', wait=1):
+        cv2.namedWindow(title)
+        cv2.imshow(title, self.frame)
+        return cv2.waitKey(wait)
         
 class gframe_sequence:
     def __init__(self, seq=[]):

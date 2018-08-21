@@ -2,15 +2,18 @@ import cv2, numpy
 from open_gesture import gframe, gframe_sequence, capture_sequence, capture_background
 from time import sleep
 
-# parameters
-begin_x_range=0.5
-end_x_range=1
-begin_y_range=0
-end_y_range=0.8
+num_frames = 50
 
 bg_threshold = 50
-
 show_during_capture = False
+
+# bounding box parameters (specify the range of the frame to consider)
+# e.g. x: 0.5 -> 1 is the right half of the frame
+#      y: 0 -> 0.8 is the top 80% of the frame
+begin_x_range=0.5
+end_x_range=1
+begin_y_range=0.1
+end_y_range=0.9
 
 def countdown(n, msg):
     print(msg)
@@ -31,7 +34,7 @@ if camera.isOpened():
                                   y_begin=begin_y_range, y_end=end_y_range)
 
     countdown(3, "capturing sequence in...")
-    sequence = capture_sequence(camera, 50, show_during_capture)
+    sequence = capture_sequence(camera, num_frames, show_during_capture)
     
     for frame in sequence:
         frame.crop(x_begin=begin_x_range, x_end=end_x_range, 
@@ -40,6 +43,13 @@ if camera.isOpened():
         frame.gray()
         frame.blur()
         frame.threshold()
+        
+        contours = frame.get_contours()
+        if(len(contours) > 0):
+            hull = cv2.convexHull(contours[0])
+            frame.frame = numpy.zeros(frame.frame.shape, numpy.uint8)
+            cv2.drawContours(frame.frame, contours, 0, (255, 255, 255), 0)
+            cv2.drawContours(frame.frame, [hull], 0, (255, 255, 255), 0)
 
     sequence.playback(100)
     cv2.destroyAllWindows()
