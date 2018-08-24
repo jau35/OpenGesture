@@ -12,8 +12,8 @@ show_during_capture = False
 #      y: 0 -> 0.8 is the top 80% of the frame
 begin_x_range=0.5
 end_x_range=1
-begin_y_range=0.1
-end_y_range=0.9
+begin_y_range=0.2
+end_y_range=1
 
 def countdown(n, msg):
     print(msg)
@@ -24,34 +24,42 @@ def countdown(n, msg):
         print(n-i)
     sleep(1)
 
-camera = cv2.VideoCapture(0)
-camera.set(10,200)
+def processFrame(frame, bg_model):
+    frame.crop(x_begin=begin_x_range, x_end=end_x_range, 
+                   y_begin=begin_y_range, y_end=end_y_range)
+    frame.remove_bg(bg_model)
+    frame.gray()
+    frame.blur()
+    frame.threshold()
 
-if camera.isOpened():
-    countdown(3, "capturing background in...")
-    bg_model = capture_background(camera, bg_threshold,
+def main():
+    camera = cv2.VideoCapture(0)
+    camera.set(10,200)
+
+    if camera.isOpened():
+        countdown(3, "capturing background in...")
+        bg_model = capture_background(camera, bg_threshold,
                                   x_begin=begin_x_range, x_end=end_x_range, 
                                   y_begin=begin_y_range, y_end=end_y_range)
 
-    countdown(3, "capturing sequence in...")
-    sequence = capture_sequence(camera, num_frames, show_during_capture)
+        countdown(3, "capturing sequence in...")
+        sequence = capture_sequence(camera, num_frames, show_during_capture)
     
-    for frame in sequence:
-        frame.crop(x_begin=begin_x_range, x_end=end_x_range, 
-                   y_begin=begin_y_range, y_end=end_y_range)
-        frame.remove_bg(bg_model)
-        frame.gray()
-        frame.blur()
-        frame.threshold()
+        for frame in sequence:
+            processFrame(frame, bg_model)
         
-        contours = frame.get_contours()
-        if(len(contours) > 0):
-            hull = cv2.convexHull(contours[0])
-            frame.frame = numpy.zeros(frame.frame.shape, numpy.uint8)
-            cv2.drawContours(frame.frame, contours, 0, (255, 255, 255), 0)
-            cv2.drawContours(frame.frame, [hull], 0, (255, 255, 255), 0)
+            contours = frame.get_contours()
+            if(len(contours) > 0):
+                hull = cv2.convexHull(contours[0])
+                rgb = cv2.cvtColor(frame.frame, cv2.COLOR_GRAY2RGB)
+                frame.frame = numpy.zeros(rgb.shape, numpy.uint8)
+                cv2.drawContours(frame.frame, contours, -1, (0, 255, 0), 2)
+                cv2.drawContours(frame.frame, [hull], -1, (0, 0, 255), 3)
 
-    sequence.playback(100)
-    cv2.destroyAllWindows()
+        sequence.playback(100)
+        cv2.destroyAllWindows()
 
-camera.release()
+    camera.release()
+
+if __name__ == '__main__':
+    main()
