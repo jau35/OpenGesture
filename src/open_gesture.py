@@ -70,7 +70,7 @@ def capture_sequence(camera, num_frames, show_frames=False):
     sequence = gframe_sequence()
     
     for i in range(0, num_frames):
-        ret, arr = camera.read()
+        arr = camera.read()
         f = gframe(arr)
         f.flip()
         if(show_frames):
@@ -86,7 +86,7 @@ def capture_background(camera, bg_threshold, x_begin, x_end, y_begin, y_end):
     bg_model = cv2.createBackgroundSubtractorMOG2(0, bg_threshold)
     
     # first frame
-    ret, arr = camera.read()
+    arr = camera.read()
     f = gframe(arr)
     f.flip()
     f.crop(x_begin, x_end, 

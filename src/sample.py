@@ -1,8 +1,9 @@
-import cv2, numpy
-from open_gesture import gframe, gframe_sequence, capture_sequence, capture_background
+import cv2, numpy, argparse
+from open_gesture import capture_sequence, capture_background
+from video_stream import CameraWrapper
 from time import sleep
 
-num_frames = 50
+num_frames = 250
 
 bg_threshold = 50
 show_during_capture = False
@@ -33,18 +34,20 @@ def processFrame(frame, bg_model):
     frame.threshold()
 
 def main():
-    camera = cv2.VideoCapture(0)
-    camera.set(10,200)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-pi", "--RaspberryPi", action="store_true", help="Use raspberry pi camera interface")
+    args = parser.parse_args()
+    camera = CameraWrapper(usePiCamera=args.RaspberryPi)
 
     if camera.isOpened():
         countdown(3, "capturing background in...")
         bg_model = capture_background(camera, bg_threshold,
-                                  x_begin=begin_x_range, x_end=end_x_range, 
-                                  y_begin=begin_y_range, y_end=end_y_range)
+                                x_begin=begin_x_range, x_end=end_x_range, 
+                                y_begin=begin_y_range, y_end=end_y_range)
 
         countdown(3, "capturing sequence in...")
         sequence = capture_sequence(camera, num_frames, show_during_capture)
-    
+        
         for frame in sequence:
             processFrame(frame, bg_model)
         
@@ -55,8 +58,8 @@ def main():
                 frame.frame = numpy.zeros(rgb.shape, numpy.uint8)
                 cv2.drawContours(frame.frame, contours, -1, (0, 255, 0), 2)
                 cv2.drawContours(frame.frame, [hull], -1, (0, 0, 255), 3)
-
-        sequence.playback(100)
+        
+        sequence.playback(1)
         cv2.destroyAllWindows()
 
     camera.release()
