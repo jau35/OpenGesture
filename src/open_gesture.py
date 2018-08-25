@@ -3,20 +3,20 @@ import numpy
 import copy
 import math
 
-def capture_background(camera, bg_threshold, x_begin=0, x_end=1, y_begin=0, y_end=1):
+def capture_background(camera, bg_threshold, preprocess_cb=None):
     '''
     Capture a background image and initialize an OpenCV background model
     @param camera - VideoStream object
     @param bg_threshold - background threshold to initialize background model
+    @param preprocess_cb - callback function to apply to the first frame
     @return - background model
     '''
     bg_model = cv2.createBackgroundSubtractorMOG2(0, bg_threshold)
     
     # first frame
     f = camera.read()
-    f.flip()
-    f.crop(x_begin, x_end, 
-           y_begin, y_end)
+    if preprocess_cb != None:
+        preprocess_cb(f)
     bg_model.apply(f.get(), learningRate=0)
     
     return bg_model
@@ -84,16 +84,18 @@ class gframe_sequence:
     def append_frame(self, frame):
         self.sequence.append(frame)
     
-    def capture(self, camera, num_frames, show_frames=False):
+    def capture(self, camera, num_frames, preprocess_cb=None, show_frames=False):
         ''' 
         Capture a sequence of frames from the camera
         @param camera - VideoStream object
         @param num_frames - number of frames to capture
+        @param preprocess_cb - callback function to apply to each frame
         @param show_frames - display video stream as the frames are captured
         '''
         for i in range(0, num_frames):
             f = camera.read()
-            f.flip()
+            if preprocess_cb != None:
+                preprocess_cb(f)
             if(show_frames):
                 f.show("capturing sequence")
             self.append_frame(f)
