@@ -1,6 +1,6 @@
 import cv2, numpy, argparse
-from open_gesture import capture_sequence, capture_background
-from video_stream import CameraWrapper
+from open_gesture import gframe_sequence, capture_background
+from video_stream import WebcamVideoStream, PiVideoStream
 from time import sleep
 
 num_frames = 250
@@ -37,7 +37,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-pi", "--RaspberryPi", action="store_true", help="Use raspberry pi camera interface")
     args = parser.parse_args()
-    camera = CameraWrapper(usePiCamera=args.RaspberryPi)
+
+    if args.RaspberryPi:
+        camera = PiVideoStream()
+    else:
+        camera = WebcamVideoStream()
 
     if camera.isOpened():
         countdown(3, "capturing background in...")
@@ -46,7 +50,8 @@ def main():
                                 y_begin=begin_y_range, y_end=end_y_range)
 
         countdown(3, "capturing sequence in...")
-        sequence = capture_sequence(camera, num_frames, show_during_capture)
+        sequence = gframe_sequence()
+        sequence.capture(camera, num_frames, show_during_capture)
         
         for frame in sequence:
             processFrame(frame, bg_model)

@@ -9,10 +9,13 @@ import datetime
 
 from threading import Event, Thread
 from abc import ABC, abstractmethod
+from open_gesture import gframe
 
 class FPS:
+    '''
+    Use this to approximate frames per second
+    '''
     def __init__(self):
-        # maintain start time, end time, and number of frames
         self._start = None
         self._end = None
         self._numFrames = 0
@@ -34,6 +37,9 @@ class FPS:
         return self._numFrames / self.elapsed()
 
 class VideoStream(ABC):
+    '''
+    Abstract base class for various camera/video stream implementations
+    '''
     def __init__(self, frame=None):
         self.frame = frame
         self.kill = None
@@ -41,6 +47,9 @@ class VideoStream(ABC):
         self.start()
         
     def start(self):
+        '''
+        Start reading frames in a new thread
+        '''
         if not self.stopped:
             return self
         self.kill = Event()
@@ -49,29 +58,51 @@ class VideoStream(ABC):
         return self
  
     def stop(self):
+        '''
+        Stop reading new frames
+        '''
         self.stopped = True
 
     def read(self):
-        return self.frame
+        '''
+        Get the last frame read by the camera
+        '''
+        return gframe(self.frame)
 
     def release(self):
+        '''
+        Stop camera and release resources
+        '''
         self.stop()
         self.kill.wait() # wait for thread to end before releasing camera
         self._release()
 
     @abstractmethod
     def update(self):
+        '''
+        Continuously reads in frames in another thread
+        '''
         pass
     
     @abstractmethod
     def isOpened(self):
+        '''
+        Check if the camera is available for use
+        '''
         pass
 
     @abstractmethod
     def _release(self):
+        '''
+        Release camera resources
+        '''
         pass
     
 class WebcamVideoStream(VideoStream):
+    '''
+    VideoStream implementation for webcams and usb cameras
+    Also works for reading in video files, src=/path/to/file
+    '''
     def __init__(self, src=0):
         self.stream = cv2.VideoCapture(src)
         self.stream.set(10,200)
@@ -91,8 +122,10 @@ class WebcamVideoStream(VideoStream):
     def _release(self):
         self.stream.release()
  
-
 class PiVideoStream(VideoStream):
+    '''
+    VideoStream implementation for the Raspberry Pi camera
+    '''
     def __init__(self, resolution=(320, 240), framerate=32):
         from picamera.array import PiRGBArray
         from picamera import PiCamera
@@ -124,28 +157,3 @@ class PiVideoStream(VideoStream):
         self.stream.close()
         self.rawCapture.close()
         self.camera.close()
-
-class CameraWrapper:
-    def __init__(self, src=0, usePiCamera=False, resolution=(320,240), framerate=32):
-        if usePiCamera:
-            self.videostream = PiVideoStream(resolution=resolution, framerate=framerate)
-        else:
-            self.videostream = WebcamVideoStream(src=src)
-    
-    def isOpened(self):
-        return self.videostream.isOpened()
-
-    def release(self):
-        self.videostream.release()
-
-    def start(self):
-        return self.videostream.start()
- 
-    def update(self):
-        self.videostream.update()
- 
-    def read(self):
-        return self.videostream.read()
- 
-    def stop(self):
-        self.videostream.stop()
