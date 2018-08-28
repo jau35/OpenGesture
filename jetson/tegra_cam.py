@@ -17,6 +17,9 @@ def open_cam_onboard(width, height):
 			   'videoconvert ! appsink').format(width, height)
 	return cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
 
+def open_cam_usb():
+	return cv2.VideoCapture("/dev/video1")
+
 
 def open_window(width, height):
 	cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)

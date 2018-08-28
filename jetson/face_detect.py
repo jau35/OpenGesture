@@ -2,14 +2,8 @@ import sys
 import cv2
 import numpy as np
 
-from tegra_cam import open_cam_onboard
+from tegra_cam import open_cam_onboard, open_cam_usb
 
-# def open_onboard_cam():
-# 	gst_str = "nvcamerasrc ! vide/x-raw(memory:NVMM), width=(int)1280, height=(int)720,\
-# 	format=(string)I420, framerate=(fraction)30/1 ! nvvidconv flip-method=0 ! video/x-raw,\
-# 	format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink"
-# 	cap = cv2.VideoCapture(gst_str)
-# 	return cap
 
 def read_cam(cap):
 	if not cap.isOpened():
@@ -58,6 +52,7 @@ def read_cam(cap):
 				print("camera open failed")
 
 if __name__ =='__main__':
-	cap = open_cam_onboard(1280, 720)
+	#cap = open_cam_onboard(1280, 720)
+	cap = open_cam_usb()
 	read_cam(cap)
 	
