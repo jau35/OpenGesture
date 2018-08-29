@@ -17,13 +17,18 @@ def sock_thread(c):
 		data = c.recv(BUFFER_SIZE)
 		if not data:
 			break
-
-		print data
-		print_lock.release()
+		
+		if data[:4] == "!err":
+			print data
+			thread.interrupt_main()
+			break
+		else:
+			print data
+			print_lock.release()
 		
 
 edison, addr = s.accept()
-print "Connection addr: ", addr
+print "[SERVER] Client %s has connected, addr: %s" % (edison, addr)
 
 available_sensors = edison.recv(BUFFER_SIZE).split(" ")
 print "Available sensors: ",
@@ -32,14 +37,16 @@ for sensor in available_sensors:
 print
 
 while True:
-	print_lock.acquire()
-	thread.start_new_thread(sock_thread, (edison,))
-	cmd = raw_input("cmd >> ")
-	#data = edison.recv(BUFFER_SIZE)
-	#if not data: break
-	#print "{0}\r".format(data),
-	edison.send(cmd)
-	if cmd == "exit":
-		break
+	try:
+		print_lock.acquire()
+		thread.start_new_thread(sock_thread, (edison,))
+		cmd = raw_input("cmd >> ")
+		edison.send(cmd)
+		if cmd in ["exit", "q", "quit"]:
+			break
+	except KeyBoardInterrupt as e:
+		print "error: exiting..."
+		thread.exit()
+		edison.close()
 
 edison.close()
