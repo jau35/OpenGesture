@@ -2,33 +2,24 @@
 #       sensor_client.py: client-side program to run on Intel Edison dev board
 #               Additional sensors are connected to the Grove breakout shield
 #               LEDs and sensors are interfaced with using mraa and upm libraries
-#               This program creates a TCP socket connection with JETSON_IP @ port TCP_PORT
+#               This program creates a TCP socket connection with SERVER_IP @ port TCP_PORT
 #
 #       Author: Dylan Wong
 #
 import socket
-import time
-import mraa
 import signal
-from upm import pyupm_grove as grove
-from upm import pyupm_jhd1313m1 as groveLCD
+import sys
+from config import *
+from edison_sensors import *
 
-JETSON_IP = "192.168.1.126"
-TCP_PORT = 8888
-BUFFER_SIZE = 1024
-ROT_PIN = 1
-SOUND_PIN = 2
-TEMP_PIN = 3
-LIGHT_PIN = 0
-
-RED_PIN = 6
-GREEN_PIN = 3
-BLUE_PIN = 5
-PWM_PINS = [3, 5, 6, 9, 10, 11]
-PWM_PER = 500
 
 # declaration for SIGINT signal handler error
 class CloseError(Exception):
+    pass
+
+
+# prototype exception if an incorrect device is commanded
+class InvalidDeviceError(Exception):
     pass
 
 
@@ -41,48 +32,6 @@ def sig_handler(sig, frame):
     raise CloseError("Received signal " + str(sig))
 
 
-def io_setup():
-    """
-    io_setup: I/O setup for GPIO and Grove sensors
-    Red, Green, Blue LEDs are initialized with PWM pins, period = PWM_PER us
-    Rotary encoder, sound, temperature, and light sensors
-    JHD1313M1 I2C display driver
-
-    Example usage: io_setup()
-    """
-    global red_led, green_led, blue_led
-    global rotary_enc, sound_sensor, temp_sensor, light_sensor, lcd
-
-    red_led = mraa.Pwm(RED_PIN)
-    green_led = mraa.Pwm(GREEN_PIN)
-    blue_led = mraa.Pwm(BLUE_PIN)
-
-    # PWM_PER = 500 us == 2 kHz freq.
-    red_led.period_us(PWM_PER)
-    green_led.period_us(PWM_PER)
-    blue_led.period_us(PWM_PER)
-
-    # enable PWM and turn off LEDs
-    red_led.enable(True)
-    red_led.write(0)
-    green_led.enable(True)
-    green_led.write(0)
-    blue_led.enable(True)
-    blue_led.write(0)
-
-    # I2C addresses: 0x3E (LCD_ADDRESS), 0x62 (RGB_ADDRESS)
-    lcd = groveLCD.Jhd1313m1(0, 0x3E, 0x62)
-    lcd.clear()
-    lcd.backlightOn()
-    lcd.setColor(0, 255, 230)
-
-    rotary_enc = grove.GroveRotary(ROT_PIN)
-    sound_sensor = mraa.Aio(SOUND_PIN)
-    temp_sensor = grove.GroveTemp(TEMP_PIN)
-    light_sensor = grove.GroveLight(LIGHT_PIN)
-
-
-# takes input stream from SOCK_STREAM and parses commands + arguments
 def parse_command(cmd):
     """
     parse_command: Takes input stream from socket stream and splits into commands + args
@@ -108,6 +57,7 @@ def parse_command(cmd):
         action = tok[1]
         opt = tok[2:]
 
+
     return obj, action, opt
 
 
@@ -127,17 +77,18 @@ def exec_command(deviceList, obj, action, opt):
     Example usage: exec_command(deviceDictionary, "blueLED", "ON", "45")
     """
     if obj.lower() in ["exit", "q", "quit"]:
-        print "exiting..."
+        print "[SERVER] Server %s shutting down..." % (SERVER_IP)
         return None
 
     if obj not in deviceList.keys():
-        print "invalid device"
-        return
+        print "invalid cmd device"
+        return None
 
     print obj, action, opt
     
     # list comprehension, parses for read-only sensors
-    sensors_only = [s for s in deviceList if (s[-3:] != "LED") and (s != "lcd")]
+    sensors_only = [s for s in deviceList if (s[-3:] != "LED") and \
+            (s != "lcd") and (s != "buzz")]
 
     # retrieves sensor obj from io_setup() in dictionary
     device_obj = deviceList[obj]
@@ -153,17 +104,19 @@ def exec_command(deviceList, obj, action, opt):
             if opt is None:
                 duty_cycle = 100
 
-                    # safety checks, clips PWM val at min/max
-            elif float(opt) < 0:
-                duty_cycle = 0
-                state = 0
-
-            elif float(opt) > 100:
-                duty_cycle = 100
-
             else:
-                duty_cycle = float(opt)
+                # safety check, clips PWM val at min/max
+                try:
+                    duty_cycle = clamp(float(opt[0]), 0, 100)
 
+                    if duty_cycle == 0:
+                        state = 0
+
+
+                except TypeError as e:
+                    print "err: pwm opt val"
+                    return
+        
         # action=OFF or otherwise
         else:
             state = 0
@@ -186,109 +139,44 @@ def exec_command(deviceList, obj, action, opt):
         ret_msg = "lcd msg recv'd"
         return ret_msg
 
+    elif obj == "buzz":
+        ret_msg = buzz_action(device_obj, action, opt)
+        return ret_msg
+
     else:
         return "Error?"
 
 
-def led_action(led, state, pwm=None):
+def connect_server(host, port, device_dict):
     """
-    led_action: Calls PWM write to LED pin with duty cycle (0.0f to 1.0f)
+    connect_server: Client-side program to connect to host server socket
+    The client (this program) connects to the specified host server socket
+    and sends a list of available connected sensors
 
-    @param led: (mraa.Pwm) PWM object from device list
-    @param state: (int) determines whether LED will be turned OFF or ON
-    @param pwm: (float) defaults None, PWM duty cycle (0% - 100%)
-            to drive LED pin
+    @param host: (str) IPv4 address of target server device
+    @param port: (int) TCP port number, should be known between server-clients
+    @param device_dict: (dict) dictionary of I/O devices created in
+                    edison_sensors.py
+    @return sock: (sock obj) created client socket to server, enables send/recv
 
-    Example usage: led_action(blueLED, state=1, 45)
+    Example usage: connect_server("192.168.1.2", 8000, {"blueLED": blue_led}
     """
-    if pwm and state:
-        led.write(pwm / 100.0)
-    elif state == 0:
-        led.write(0)
+    try:
+        # create and connect to TCP socket host
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
 
-    return
+    except socket.error:
+        print "[CLIENT] Error connecting to server, is the server up?"
+        sys.exit()
 
+    print "Connection to server established: %s, %s" % (host, port)
 
-def get_grove_value(sensor):
-    """
-    get_grove_value: Reads from sensor with upm lib and converts to human-
-    readable unit; rotary_enc=degrees, temp=Fahrenheit, light=lux
+    # sends device list to server to tell user what devices can be commanded
+    sock.send(" ".join(device_dict.keys()))
 
-    @param sensor: (Grove obj) sensor object from device list
-    @return sensor_read: (float) corresponding converted sensor reading
+    return sock
 
-    Example usage: get_grove_value(light_sensor)
-    """
-    sensor_read = None
-
-    # rotary encoder, absolute pos in degrees
-    if sensor == rotary_enc:
-        abs_pos = sensor.abs_value()
-        deg_pos = sensor.abs_deg()
-
-        sensor_read = float(deg_pos)
-
-    # temp sensor, returns ambient temperature in Fahrenheit
-    elif sensor == temp_sensor:
-        temp_cels = sensor.value()
-        temp_fahr = temp_cels * 9.0/5.0 + 32
-
-        sensor_read = float(temp_fahr)
-
-    # light sensor, gets raw val and approximated lux val
-    elif sensor == light_sensor:
-        light_raw = sensor.raw_value()
-        light_lux = sensor.value()
-
-        sensor_read = float(light_lux)
-
-    return sensor_read
-
-
-def lcd_action(display, cmd, msg):
-    """
-    lcd_action: Performs various LCD functions (write, setColor, clear, etc)
-
-    @param display: (LCD obj) LCD variable from upm
-    @param cmd: (str) determines the JHD1313M1 class function to be called
-    @param msg: (str) string message or RGB values to setColor
-
-    Example usage: lcd_action(lcd, "write", "hello world!")
-   """
-
-    # lcd write, clears and setCursor(0,0)
-    if cmd.lower() in ["w", "write", "wr"]:
-        display.clear()
-        display.home()
-        str_msg = msg
-
-        # in the case that lcd w is called from server
-        # server drives this function with msg as a list of strings
-        if type(msg) is list:
-            str_msg = " ".join(msg)
-
-        # mitigates display runoff, moves cursor to next line if exceeds 
-        # 16 char width
-        if len(str_msg) > 16:
-            display.write(str_msg[:16])
-            display.setCursor(1,0)
-            display.write(str_msg[16:])
-
-        else:
-            display.write(str_msg)
-
-    elif cmd.lower() in ["c", "clear", "clc"]:
-        display.clear()
-        display.home()
-
-    # display.setColor(R, G, B), 0d - 255d
-    elif cmd.lower() in ["color", "colo", "setcolor"]:
-        display.setColor(int(msg[0]), int(msg[1]), int(msg[2]))
-    
-    else:
-        print "lcd_action err"
-
-    return
 
 
 def close_client(sock_conn, display):
@@ -299,6 +187,7 @@ def close_client(sock_conn, display):
     @param sock_conn: (socket) socket connection object from socket.socket call
     @param display: (LCD obj) LCD display variable to clear, turn off, etc
 
+    Example usage: close_client(sock, lcd)
     """
     print "Closing client...",
     data = sock_conn.recv(BUFFER_SIZE)
@@ -310,56 +199,49 @@ def close_client(sock_conn, display):
     print "done\n"
 
 
+
 if __name__ == '__main__':
+    # SIGINT handler
     signal.signal(signal.SIGINT, sig_handler)
 
-    global red_led, green_led, blue_led
-    global rotary_enc, sound_sensor, temp_sensor, light_sensor, lcd
 
-    io_setup()
-    # primary device list dictionary
-    devices = { "redLED": red_led, \
-            "greenLED": green_led, \
-            "blueLED": blue_led, \
-            "rot": rotary_enc, \
-            "sound": sound_sensor, \
-            "temp": temp_sensor, \
-            "light": light_sensor, \
-            "lcd": lcd \
-            }
+   # primary device list dictionary
+    devices = io_setup()
 
-    # create and connect to TCP socket host
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((JETSON_IP, TCP_PORT))
+    sock = connect_server(SERVER_IP, TCP_PORT, devices)
 
-    print "Connection to server established: %s, %s" % (JETSON_IP, TCP_PORT)
-
-    # sends device list to server to tell user what devices can be commanded
-    s.send(" ".join(devices.keys()))
-
-    try:
-        while True:
-            data = s.recv(BUFFER_SIZE)
-            if not data:
-                break
-            else:
-                print "command recv'd: ", data
+    while True:
+        data = sock.recv(BUFFER_SIZE)
+        
+        if not data:
+            break
+        
+        else:
+            print "command recv'd: ", data
+            
+            try:
+                # "blueLED" "ON" 45
                 entity, action, option = parse_command(data)
 
                 if entity not in devices.keys():
-                    s.send("!err: invalid device")
-                    print "!err: something?"
-                    break
+                    raise InvalidDeviceError
 
                 client_ret = exec_command(devices, entity, action, option)
 
                 if client_ret is None:
-                    break
+                    raise CloseError
+
                 else:
-                    s.send(client_ret)
+                    sock.send(client_ret)
 
-    except CloseError as close_err:
-        close_client(s, lcd)
+            except CloseError:
+                close_client(sock, devices["lcd"])
+                sys.exit()
 
-    close_client(s, lcd)
+            except InvalidDeviceError:
+                sock.send("!err: invalid device command")
+                continue
+
+
+    close_client(sock, devices["led"])
 
