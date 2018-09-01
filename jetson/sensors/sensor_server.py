@@ -1,5 +1,11 @@
+#!/usr/bin/python
+#	sensor_server.py: Server-side program to run Jetson TX2 dev board
+#				Creates a binded host socket with IP in config.py
+#				Handles multiple clients with socket mux select	
+#				Currently receives commands from stdin and sends to all clients
+#				
+
 import socket
-import threading
 import sys
 import select
 

@@ -240,6 +240,10 @@ def buzz_action(buzz, cmd, val):
         except ValueError:
             if sound.lower() in chords.keys():
                 freq = chords[sound]
+			
+			else:
+				buzz_ret = "buzz: invalid tone"
+				return buzz_ret
     
         buzz_ret = "buzz played %s for %d us" % (sound, duration_us)
         buzz.playSound(freq, duration_us)

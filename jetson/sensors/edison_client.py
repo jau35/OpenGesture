@@ -1,8 +1,8 @@
 #!/usr/bin/python
 #       sensor_client.py: client-side program to run on Intel Edison dev board
-#               Additional sensors are connected to the Grove breakout shield
-#               LEDs and sensors are interfaced with using mraa and upm libraries
 #               This program creates a TCP socket connection with SERVER_IP @ port TCP_PORT
+#				New commands are received, parsed, and distributed within respective HW
+#				Primary HW calls (mraa/upm) are defined in edison_sensors.py
 #
 #       Author: Dylan Wong
 #
@@ -243,5 +243,5 @@ if __name__ == '__main__':
                 continue
 
 
-    close_client(sock, devices["led"])
+    close_client(sock, devices["lcd"])
 
